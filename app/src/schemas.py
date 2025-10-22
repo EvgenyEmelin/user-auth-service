@@ -1,34 +1,34 @@
+from typing import List, Optional
+
 from pydantic import BaseModel, EmailStr
 
 
-
-#Cхема для регистрации на входе
-class UserRegisterIn(BaseModel):
-    email: EmailStr
+class UserCreate(BaseModel):
+    username: str
     password: str
+    email: EmailStr
 
-#Cхема для регистрации на выходе
-class UserRegisterOut(BaseModel):
+class UserRead(BaseModel):
     id: int
+    username: str
     email: EmailStr
+    role: str
     is_active: bool
+    is_superuser: bool
+    is_verified: bool
 
-#Cхема для логина на входе
-class UserLoginIn(BaseModel):
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr]
+    password: Optional[str]
+    username: Optional[str]
+
+class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-#Схема токена
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
-#Cхема для логина на выходе
-class UserLoginOut(BaseModel):
-    id: int
-    email: EmailStr
-    is_active: bool
-    token: Token
 
 
 

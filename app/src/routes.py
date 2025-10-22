@@ -1,51 +1,48 @@
-import bcrypt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, APIRouter, HTTPException, status
+from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.core.database import get_async_session
+from app.src.crud import get_user_by_email, get_user_by_id, create_user, update_user, delete_user
 from app.src.models import User
-from app.src.schemas import UserRegisterIn, UserRegisterOut, UserLoginIn, UserLoginOut, Token
+from app.src.schemas import UserRead, UserCreate, UserUpdate
 
-from app.src.service import hash_password, verify_password, create_token
+router = APIRouter(tags=["Users"], prefix="/users")
 
-import hashlib
+@router.get('/id/{user_id}', response_model=UserRead)
+async def get_user_by_id_router(user_id: int, session: AsyncSession = Depends(get_async_session)):
+    user = await get_user_by_id(user_id, session)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-router = APIRouter()
+@router.get('/email/{user_email}', response_model=UserRead)
+async def get_user_by_email_router(user_email: EmailStr, session: AsyncSession = Depends(get_async_session)):
+    user = await get_user_by_email(user_email, session)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-@router.post("/register", response_model=UserRegisterOut)
-async def register(user: UserRegisterIn, session: AsyncSession = Depends(get_async_session)):
-    stmt = await session.execute(select(User).where(User.email == user.email))
-    result = stmt.scalar()
-    if result:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    else:
-        user_password = hash_password(user.password)
-        new_user = User(email=user.email, hashed_password=user_password.decode("utf8"))
-        session.add(new_user)
-        await session.commit()
-        await session.refresh(new_user)
-        return new_user
+@router.post('/', response_model=UserRead)
+async def create_user_router(user: UserCreate, session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(User).where(or_(User.email == user.email,User.username == user.username)))
+    existing_user = result.scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User already exists")
+    created_user = await create_user(user, session)
+    return created_user
 
-@router.post("/login", response_model=UserLoginOut)
-async def login(user: UserLoginIn, session: AsyncSession = Depends(get_async_session)):
-    stmt = await session.execute(select(User).where(User.email == user.email))
-    result = stmt.scalar()
-    if not result:
-        raise HTTPException(status_code=400, detail="Incorrect login or password")
+@router.put('/update/{user_id}', response_model=UserRead)
+async def update_user_router(user_id:int,user_data: UserUpdate, session: AsyncSession = Depends(get_async_session)):
+    user_db = await get_user_by_id(user_id, session)
+    user = await update_user(user_db,user_data, session)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-    sha256_hash = hashlib.sha256(user.password.encode('utf-8')).digest()
-
-    if not bcrypt.checkpw(sha256_hash, result.hashed_password.encode('utf-8')):
-        raise HTTPException(status_code=400, detail="Incorrect login or password")
-
-    access_token = create_token({"sub": result.email, "id": result.id})
-
-    return UserLoginOut(
-        id=result.id,
-        email=result.email,
-        is_active=result.is_active,
-        token=Token(access_token=access_token, token_type="bearer")
-    )
-
+@router.delete('/delete/{user_id}')
+async def delete_user_router(user_id: int, session: AsyncSession = Depends(get_async_session)):
+    user = await delete_user(user_id, session)
+    return user
 
