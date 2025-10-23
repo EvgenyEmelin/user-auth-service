@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+
 from app.src.service import get_password_hash
 from pydantic import EmailStr
 
@@ -29,6 +31,19 @@ async def create_user(user_data:UserCreate, session: AsyncSession):
 
 async def update_user(user_db: User, user_data:UserUpdate, session: AsyncSession):
     update_data = user_data.dict(exclude_unset=True)
+    if "username" in update_data and update_data["username"] != user_db.username:
+        existing_user = await session.execute(
+            select(User).where(User.username == update_data["username"])
+        )
+        if existing_user.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Username already exists")
+
+    if "email" in update_data and update_data["email"] != user_db.email:
+        existing_user = await session.execute(
+            select(User).where(User.email == update_data["email"])
+        )
+        if existing_user.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already exists")
     if 'password' in update_data:
         update_data['password'] = get_password_hash(update_data.pop('password'))
     for key, value in update_data.items():
